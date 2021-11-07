@@ -1,5 +1,6 @@
 import random
-from .scheme import *
+from abc import ABC, abstractmethod
+from scheme import *
 
 class DGHV(HomomorphicEncryptionScheme):
     def keyGen(self, lmbda):
@@ -7,8 +8,8 @@ class DGHV(HomomorphicEncryptionScheme):
         self.P = lmbda ** 2
         self.Q = lmbda ** 5
         # Key is random P-bit odd integer
-        key = random.randrange(1, 2 ** self.P, 2)
-        return key
+        self.key = random.randrange(1, 2 ** self.P, 2)
+        return self.key
 
     def encrypt(self, p, m):
         # m' is random N-bit number such that m' = m mod 2
@@ -38,6 +39,56 @@ class DGHV(HomomorphicEncryptionScheme):
         return c1 * c2
 
     def evaluate(self, f, *cs):
-        # Assuming f is a Circuit with gates properly set up...
+        # Call f, pass in the args and the scheme
+        return f(self, *cs)
+
+    def recrypt(self, pk, D, sk, c1):
+        # pk is the new public key to encrypt into
+        # D is the decryption circuit
+        # sk is the secret key encrypted under pk (list of ciphertexts, 1 per bit)
+        # c1 is the ciphertext
+        bitsStr = "{0:b}".format(c1) # Get bits of c1 for encrypt
+        c1_ = [self.encrypt(pk, int(b)) for b in bitsStr]
+        args = sk + c1_
+        c = self.evaluate(pk, D, *args)
+        return c
+
+class Gate(ABC):
+    @abstractmethod
+    def run(self, scheme, b1, b2):
         pass
+
+class XORGate(Gate):
+    def run(self, scheme, b1, b2):
+        return scheme.add(b1, b2)
+
+class ANDGate(Gate):
+    def run(self, scheme, b1, b2):
+        return scheme.multiply(b1, b2)
+
+class ORGate(Gate):
+    def run(self, scheme, b1, b2):
+        andGate = ANDGate()
+        xorGate = XORGate()
+        andResult = andGate.run(scheme, b1, b2)
+        xorResult = xorGate.run(scheme, b1, b2)
+        return xorGate.run(xorResult, andResult)
+
+class NANDGate(Gate):
+    def run(self, scheme, b1, b2):
+        andGate = ANDGate()
+        andResult = andGate.run(scheme, b1, b2)
+        xorGate = XORGate()
+        encrypted1 = scheme.encrypt(scheme.key, 1)
+        return xorGate.run(scheme, encrypted1, andResult)
+
+if __name__ == "__main__":
+    # Some tests
+    scheme = DGHV()
+    key = scheme.keyGen(5)
+    for bit in range(0, 2):
+        expected = bit
+        cipher = scheme.encrypt(key, bit)
+        actual = scheme.decrypt(key, cipher)
+        assert expected == actual
 
