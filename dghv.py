@@ -15,10 +15,17 @@ class DGHV(HomomorphicEncryptionScheme):
         self.P = lmbda ** 2
         self.Q = lmbda ** 5
         # Key is random P-bit odd integer
-        self.key = random.randrange(2 ** (self.P - 1) + 1, 2 ** self.P, 2)
-        return self.key
+        self.secretKey = random.randrange(2 ** (self.P - 1) + 1, 2 ** self.P, 2)
+        self.publicKey = [self.encryptWithSecret(self.secretKey, 0) for _ in range(lmbda)]
+        return self.publicKey, self.secretKey
 
-    def encrypt(self, p, m):
+    def encrypt(self, pubKey, m):
+        subset = random.sample(pubKey, random.randint(1, len(pubKey)-1))
+        # In theory this is still 0 mod p
+        subsetSum = sum(subset)
+        return m + subsetSum
+
+    def encryptWithSecret(self, p, m):
         # m' is random N-bit number such that m' = m mod 2
         m_ = random.randrange(2 ** (self.N - 1) + m, 2 ** self.N, 2)
         assert (m_ % 2) == m
@@ -106,7 +113,7 @@ class NANDGate(Gate):
         andGate = ANDGate()
         andResult = andGate.run(scheme, inputs[0], inputs[1])
         xorGate = XORGate()
-        encrypted1 = scheme.encrypt(scheme.key, 1)
+        encrypted1 = scheme.encrypt(scheme.publicKey, 1)
         return xorGate.run(scheme, encrypted1, andResult)
 
 class FullAdder(Gate):
@@ -132,7 +139,7 @@ def addernbit(scheme, n, *ciphers):
         a.append(ciphers[i])
         b.append(ciphers[i+n])
     adder = FullAdder()
-    cIn = scheme.encrypt(scheme.key, 0)
+    cIn = scheme.encrypt(scheme.publicKey, 0)
     r = []
     for i in range(n):
         ri, cIn = adder.run(scheme, a[i], b[i], cIn)
@@ -142,30 +149,30 @@ def addernbit(scheme, n, *ciphers):
 if __name__ == "__main__":
     # Some tests
     scheme = DGHV()
-    key = scheme.keyGen(2)
+    publicKey, secretKey = scheme.keyGen(2)
     # Check that bit encryption works
     print("Testing bit encryption")
     for bit in range(0, 2):
         expected = bit
-        cipher = scheme.encrypt(key, bit)
-        actual = scheme.decrypt(key, cipher)
+        cipher = scheme.encrypt(publicKey, bit)
+        actual = scheme.decrypt(secretKey, cipher)
         assert expected == actual
     # Test basic operators
     print("Testing primitive operations (XOR/AND)")
     for bit1 in range(0, 2):
         for bit2 in range(0, 2):
             expected = bit1 ^ bit2
-            encrypted1 = scheme.encrypt(key, bit1)
-            encrypted2 = scheme.encrypt(key, bit2)
+            encrypted1 = scheme.encrypt(publicKey, bit1)
+            encrypted2 = scheme.encrypt(publicKey, bit2)
             encryptedActual = scheme.add(encrypted1, encrypted2)
-            actual = scheme.decrypt(key, encryptedActual)
+            actual = scheme.decrypt(secretKey, encryptedActual)
             print(f"{bit1} ^ {bit2} = {expected} | {actual}")
             assert expected == actual
             expected = bit1 & bit2
-            encrypted1 = scheme.encrypt(key, bit1)
-            encrypted2 = scheme.encrypt(key, bit2)
+            encrypted1 = scheme.encrypt(publicKey, bit1)
+            encrypted2 = scheme.encrypt(publicKey, bit2)
             encryptedActual = scheme.mult(encrypted1, encrypted2)
-            actual = scheme.decrypt(key, encryptedActual)
+            actual = scheme.decrypt(secretKey, encryptedActual)
             print(f"{bit1} & {bit2} = {expected} | {actual}")
             assert expected == actual
     # Test some additions
@@ -173,11 +180,11 @@ if __name__ == "__main__":
     for a in range(0, 2):
         for b in range(0, 2):
             expected = a + b
-            encryptedA = scheme.encryptNumber(key, a, precision=2)
-            encryptedB = scheme.encryptNumber(key, b, precision=2)
+            encryptedA = scheme.encryptNumber(publicKey, a, precision=2)
+            encryptedB = scheme.encryptNumber(publicKey, b, precision=2)
             args = encryptedA + encryptedB
             encryptedSum = scheme.evaluate(addernbit, 2, *args)
-            actual = scheme.decryptNumber(key, encryptedSum)
+            actual = scheme.decryptNumber(secretKey, encryptedSum)
             print(f"{a} + {b} = {expected} | {actual}")
             assert expected == actual
 
