@@ -137,7 +137,6 @@ def addernbit(scheme, n, *ciphers):
     for i in range(n):
         ri, cIn = adder.run(scheme, a[i], b[i], cIn)
         r.append(ri)
-    print(r)
     return r
 
 if __name__ == "__main__":
@@ -151,6 +150,24 @@ if __name__ == "__main__":
         cipher = scheme.encrypt(key, bit)
         actual = scheme.decrypt(key, cipher)
         assert expected == actual
+    # Test basic operators
+    print("Testing primitive operations (XOR/AND)")
+    for bit1 in range(0, 2):
+        for bit2 in range(0, 2):
+            expected = bit1 ^ bit2
+            encrypted1 = scheme.encrypt(key, bit1)
+            encrypted2 = scheme.encrypt(key, bit2)
+            encryptedActual = scheme.add(encrypted1, encrypted2)
+            actual = scheme.decrypt(key, encryptedActual)
+            print(f"{bit1} ^ {bit2} = {expected} | {actual}")
+            assert expected == actual
+            expected = bit1 & bit2
+            encrypted1 = scheme.encrypt(key, bit1)
+            encrypted2 = scheme.encrypt(key, bit2)
+            encryptedActual = scheme.mult(encrypted1, encrypted2)
+            actual = scheme.decrypt(key, encryptedActual)
+            print(f"{bit1} & {bit2} = {expected} | {actual}")
+            assert expected == actual
     # Test some additions
     print("Testing addition circuit evaluation")
     for a in range(0, 2):
