@@ -146,6 +146,15 @@ def addernbit(scheme, n, *ciphers):
         r.append(ri)
     return r
 
+def lsb(c):
+    return c & 1
+
+def decryptCircuit(scheme, *ciphers):
+    c = ciphers[0]
+    xorGate = XORGate()
+    m = xorGate.run(scheme, lsb(c), lsb(round(c/scheme.secretKey)))
+    return m
+
 if __name__ == "__main__":
     # Some tests
     scheme = DGHV()
