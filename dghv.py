@@ -20,6 +20,7 @@ class DGHV(HomomorphicEncryptionScheme):
         self.Q = lmbda ** 5
         # Key is random P-bit odd integer
         self.secretKey = random.randrange(2 ** (self.P - 1) + 1, 2 ** self.P, 2)
+        print(self.secretKey)
         self.publicKey = [self.encryptWithSecret(self.secretKey, 0) for _ in range(lmbda)]
         # Generate the random subset
         target = 1/self.secretKey
@@ -96,7 +97,8 @@ class DGHV(HomomorphicEncryptionScheme):
         zs = c[1]
         subsetsum = sum([sk[i]*zs[i] for i in range(self.beta)])
         roundedsum = round(subsetsum)
-        return lsb(c[0]) ^ lsb(roundedsum)
+        #return lsb(c[0]) ^ lsb(roundedsum)
+        return (c[0] - roundedsum) % 2
 
     def decryptNumber(self, p, cs):
         # Ciphers are little endian
@@ -221,7 +223,6 @@ if __name__ == "__main__":
             expected = bit1 ^ bit2
             encrypted1 = scheme.encrypt(publicKey, bit1)
             encrypted2 = scheme.encrypt(publicKey, bit2)
-            print(f"enc1={encrypted1},enc2={encrypted2}")
             encryptedActual = scheme.add(encrypted1, encrypted2)
             actual = scheme.decrypt(secretKey, encryptedActual)
             print(f"{bit1} ^ {bit2} = {expected} | {actual}")
@@ -229,7 +230,6 @@ if __name__ == "__main__":
             expected = bit1 & bit2
             encrypted1 = scheme.encrypt(publicKey, bit1)
             encrypted2 = scheme.encrypt(publicKey, bit2)
-            print(f"enc1={encrypted1},enc2={encrypted2}")
             encryptedActual = scheme.mult(encrypted1, encrypted2)
             actual = scheme.decrypt(secretKey, encryptedActual)
             print(f"{bit1} & {bit2} = {expected} | {actual}")
