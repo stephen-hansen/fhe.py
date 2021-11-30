@@ -19,28 +19,33 @@ class DGHV(HomomorphicEncryptionScheme):
         self.P = lmbda ** 2
         self.Q = lmbda ** 5
         # Key is random P-bit odd integer
-        self.secretKey = random.randrange(2 ** (self.P - 1) + 1, 2 ** self.P, 2)
-        print(self.secretKey)
+        self.secretKey = random.randrange(1, 2 ** self.P, 2)
         self.publicKey = [self.encryptWithSecret(self.secretKey, 0) for _ in range(lmbda)]
         # Generate the random subset
-        target = 1/self.secretKey
+        target = (1/self.secretKey) % 2
         itemset = []
         self.alpha = 0
-        while target > 0:
+        alpha_max = lmbda
+        alpha_sum = 0
+        while alpha_max > 0:
+            alpha_max -= 1
             randvalue = random.uniform(0, 2)
             while randvalue == 2:
                 randvalue = random.uniform(0, 2)
-            if target < randvalue:
-                randvalue = target
-            target -= randvalue
             self.alpha += 1
+            alpha_sum += randvalue
             itemset.append([randvalue, 1])
             for _ in range(random.randint(1,4)):
                 randvalue = random.uniform(0, 2)
                 while randvalue == 2:
                     randvalue = random.uniform(0, 2)
                 itemset.append([randvalue, 0])
+        if (alpha_sum % 2 != target):
+            # Add one more term on
+            goal = target-(alpha_sum%2)+2
+            itemset.append([goal, 1])
         random.shuffle(itemset)
+        print(itemset)
         ys = [x[0] for x in itemset]
         self.beta = len(ys)
         self.publicKeyStar = [self.publicKey, ys]
@@ -69,11 +74,11 @@ class DGHV(HomomorphicEncryptionScheme):
 
     def encryptWithSecret(self, p, m):
         # m' is random N-bit number such that m' = m mod 2
-        m_ = random.randrange(2 ** (self.N - 1) + m, 2 ** self.N, 2)
+        m_ = random.randrange(m, 2 ** self.N, 2)
         assert (m_ % 2) == m
         # c <- m' + pq
         # q is a random Q-bit number (noise)
-        q = random.randrange(2 ** (self.Q - 1), 2 ** self.Q, 1)
+        q = random.randrange(0, 2 ** self.Q, 1)
         c = m_ + p*q
         # Verify that the output can be decrypted correctly
         assert (c % p) == m_
@@ -97,8 +102,9 @@ class DGHV(HomomorphicEncryptionScheme):
         zs = c[1]
         subsetsum = sum([sk[i]*zs[i] for i in range(self.beta)])
         roundedsum = round(subsetsum)
-        #return lsb(c[0]) ^ lsb(roundedsum)
-        return (c[0] - roundedsum) % 2
+        print(f"expected={(c[0] % self.secretKey) % 2}, actual={lsb(c[0]) ^ lsb(round(c[0]/self.secretKey))}; c={c[0]}, secret={self.secretKey}")
+        return lsb(c[0]) ^ lsb(roundedsum)
+        #return (c[0] - roundedsum) % 2
 
     def decryptNumber(self, p, cs):
         # Ciphers are little endian
