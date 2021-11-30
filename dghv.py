@@ -19,7 +19,7 @@ class DGHV(HomomorphicEncryptionScheme):
         self.P = lmbda ** 2
         self.Q = lmbda ** 5
         # Key is random P-bit odd integer
-        self.secretKey = random.randrange(1, 2 ** self.P, 2)
+        self.secretKey = random.randrange(1 + 2 ** (self.P - 1), 2 ** self.P, 2)
         self.publicKey = [self.encryptWithSecret(self.secretKey, 0) for _ in range(lmbda)]
         # Generate the random subset
         target = (1/self.secretKey) % 2
@@ -74,11 +74,11 @@ class DGHV(HomomorphicEncryptionScheme):
 
     def encryptWithSecret(self, p, m):
         # m' is random N-bit number such that m' = m mod 2
-        m_ = random.randrange(m, 2 ** self.N, 2)
+        m_ = random.randrange(m + 2 ** (self.N - 1), 2 ** self.N, 2)
         assert (m_ % 2) == m
         # c <- m' + pq
         # q is a random Q-bit number (noise)
-        q = random.randrange(0, 2 ** self.Q, 1)
+        q = random.randrange(2 ** (self.Q - 1), 2 ** self.Q, 1)
         c = m_ + p*q
         # Verify that the output can be decrypted correctly
         assert (c % p) == m_
@@ -101,8 +101,8 @@ class DGHV(HomomorphicEncryptionScheme):
         #return c_ % 2
         zs = c[1]
         subsetsum = sum([sk[i]*zs[i] for i in range(self.beta)])
-        roundedsum = round(subsetsum)
-        print(f"expected={(c[0] % self.secretKey) % 2}, actual={lsb(c[0]) ^ lsb(round(c[0]/self.secretKey))}; c={c[0]}, secret={self.secretKey}")
+        roundedsum = math.floor(subsetsum)
+        print(f"expected={(c[0] % self.secretKey) % 2}, actual={lsb(c[0]) ^ lsb(math.floor(c[0]/self.secretKey))}; c={c[0]}, secret={self.secretKey}")
         return lsb(c[0]) ^ lsb(roundedsum)
         #return (c[0] - roundedsum) % 2
 
