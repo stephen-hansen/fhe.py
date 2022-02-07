@@ -14,6 +14,9 @@ def toBitOrder(number, precision=None):
     return [int(b) for b in fstring.format(number)[::-1]]
 
 class DGHV(HomomorphicEncryptionScheme):
+    def __init__(self, l):
+        self.keyGen(l)
+
     def keyGen(self, lmbda):
         self.N = lmbda
         self.P = lmbda ** 2
@@ -50,16 +53,15 @@ class DGHV(HomomorphicEncryptionScheme):
         self.beta = len(ys)
         self.publicKeyStar = [self.publicKey, ys]
         self.secretKeyStar = [x[1] for x in itemset]
-        self.encryptedSecretKey = [self.encrypt(self.publicKeyStar, b) for b in self.secretKeyStar]
-        return self.publicKeyStar, self.secretKeyStar
+        self.encryptedSecretKey = [self.encrypt(b) for b in self.secretKeyStar]
 
     def origEncrypt(self, pubKey, m):
         subset = random.sample(pubKey, random.randint(1, len(pubKey)-1))
         subsetSum = sum(subset)
         return m + subsetSum
 
-    def encrypt(self, pubKey, m):
-        cipher = self.origEncrypt(pubKey[0], m)
+    def encrypt(self, m):
+        cipher = self.origEncrypt(self.publicKeyStar[0], m)
         zs = self.postprocess(cipher)
         subsetsum = sum([self.secretKeyStar[i]*zs[i] for i in range(self.beta)])
         return [cipher, zs]
@@ -84,14 +86,14 @@ class DGHV(HomomorphicEncryptionScheme):
         assert (c % p) == m_
         return c
 
-    def encryptNumber(self, p, number, precision=None):
+    def encryptNumber(self, number, precision=None):
         ms = toBitOrder(number, precision)
         ciphers = []
         for m in ms:
-            ciphers.append(self.encrypt(p, m))
+            ciphers.append(self.encrypt(m))
         return ciphers
 
-    def decrypt(self, sk, c):
+    def decrypt(self, c):
         # c' is (c mod p) in (-p/2, p/2)
         #c_ = c % p # c_ in range [0, p)
         #if c_ >= p//2:
@@ -100,19 +102,19 @@ class DGHV(HomomorphicEncryptionScheme):
         #    c_ -= p
         #return c_ % 2
         zs = c[1]
-        subsetsum = sum([sk[i]*zs[i] for i in range(self.beta)])
+        subsetsum = sum([self.secretKeyStar[i]*zs[i] for i in range(self.beta)])
         roundedsum = math.floor(subsetsum)
         print(f"expected={(c[0] % self.secretKey) % 2}, actual={lsb(c[0]) ^ lsb(math.floor(c[0]/self.secretKey))}; c={c[0]}, secret={self.secretKey}")
         return lsb(c[0]) ^ lsb(roundedsum)
         #return (c[0] - roundedsum) % 2
 
-    def decryptNumber(self, p, cs):
+    def decryptNumber(self, cs):
         # Ciphers are little endian
         i = 0
         result = 0
         length = len(cs)
         for i in range(length):
-            bit = self.decrypt(p, cs[i])
+            bit = self.decrypt(self.publicKeyStar, cs[i])
             result += bit * (2 ** i)
         return result
 
@@ -175,7 +177,7 @@ class NANDGate(Gate):
         andGate = ANDGate()
         andResult = andGate.run(scheme, inputs[0], inputs[1])
         xorGate = XORGate()
-        encrypted1 = scheme.encrypt(scheme.publicKeyStar, 1)
+        encrypted1 = scheme.encrypt(1)
         return xorGate.run(scheme, encrypted1, andResult)
 
 class FullAdder(Gate):
@@ -201,7 +203,7 @@ def addernbit(scheme, n, *ciphers):
         a.append(ciphers[i])
         b.append(ciphers[i+n])
     adder = FullAdder()
-    cIn = scheme.encrypt(scheme.publicKeyStar, 0)
+    cIn = scheme.encrypt(0)
     r = []
     for i in range(n):
         ri, cIn = adder.run(scheme, a[i], b[i], cIn)
@@ -213,31 +215,30 @@ def decryptCircuit(scheme, *ciphers):
 
 if __name__ == "__main__":
     # Some tests
-    scheme = DGHV()
-    publicKey, secretKey = scheme.keyGen(2)
+    scheme = DGHV(2)
     # Check that bit encryption works
     print("Testing bit encryption")
     for bit in range(0, 2):
         expected = bit
-        cipher = scheme.encrypt(publicKey, bit)
-        actual = scheme.decrypt(secretKey, cipher)
+        cipher = scheme.encrypt(bit)
+        actual = scheme.decrypt(cipher)
         assert expected == actual
     # Test basic operators
     print("Testing primitive operations (XOR/AND)")
     for bit1 in range(0, 2):
         for bit2 in range(0, 2):
             expected = bit1 ^ bit2
-            encrypted1 = scheme.encrypt(publicKey, bit1)
-            encrypted2 = scheme.encrypt(publicKey, bit2)
+            encrypted1 = scheme.encrypt(bit1)
+            encrypted2 = scheme.encrypt(bit2)
             encryptedActual = scheme.add(encrypted1, encrypted2)
-            actual = scheme.decrypt(secretKey, encryptedActual)
+            actual = scheme.decrypt(encryptedActual)
             print(f"{bit1} ^ {bit2} = {expected} | {actual}")
             assert expected == actual
             expected = bit1 & bit2
-            encrypted1 = scheme.encrypt(publicKey, bit1)
-            encrypted2 = scheme.encrypt(publicKey, bit2)
+            encrypted1 = scheme.encrypt(bit1)
+            encrypted2 = scheme.encrypt(bit2)
             encryptedActual = scheme.mult(encrypted1, encrypted2)
-            actual = scheme.decrypt(secretKey, encryptedActual)
+            actual = scheme.decrypt(encryptedActual)
             print(f"{bit1} & {bit2} = {expected} | {actual}")
             assert expected == actual
     # Test some additions
@@ -245,11 +246,11 @@ if __name__ == "__main__":
     for a in range(0, 2):
         for b in range(0, 2):
             expected = a + b
-            encryptedA = scheme.encryptNumber(publicKey, a, precision=2)
-            encryptedB = scheme.encryptNumber(publicKey, b, precision=2)
+            encryptedA = scheme.encryptNumber(a, precision=2)
+            encryptedB = scheme.encryptNumber(b, precision=2)
             args = encryptedA + encryptedB
             encryptedSum = scheme.evaluate(addernbit, 2, *args)
-            actual = scheme.decryptNumber(secretKey, encryptedSum)
+            actual = scheme.decryptNumber(encryptedSum)
             print(f"{a} + {b} = {expected} | {actual}")
             assert expected == actual
 

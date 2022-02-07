@@ -7,13 +7,13 @@ class EncryptionScheme(ABC):
         pass
 
     @abstractmethod
-    def encrypt(self, p, m):
+    def encrypt(self, m):
         # p is the key, m is a plaintext bit
         # returns a ciphertext
         pass
 
     @abstractmethod
-    def decrypt(self, p, c):
+    def decrypt(self, c):
         # p is the key, c is a ciphertext
         # returns a plaintext
         pass
