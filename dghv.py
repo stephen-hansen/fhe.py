@@ -11,7 +11,7 @@ def toBitOrder(number, precision=None):
     fstring = "{0:b}"
     if precision is not None:
         fstring = "{0:0" + str(precision) + "b}"
-    return [int(b) for b in fstring.format(number)[::-1]]
+    return [int(b) for b in fstring.format(number)]
 
 class SymmetricDGHV(HomomorphicEncryptionScheme):
     def __init__(self, l):
@@ -133,6 +133,59 @@ class BootstrappableDGHV(AsymmetricDGHV):
         sy = self.postProcess(newc)
         return (newc, sy)
 
+class DecryptCircuit():
+    def __init__(self, scheme):
+        # Step 1, encrypt every bit of secret key
+        self.scheme = scheme
+        # A vector of bits
+        key = scheme.newsecret
+        self.encryptedkey = [scheme.encrypt(v) for v in key]
+    
+    def run(self, c):
+        # Step 2, encrypt cipher again (bits)
+        cipher = self.scheme.encrypt(toBitOrder(c[0])[-1])
+        # Inputs are doubly encrypted cipher (c) and encrypted bits
+        # Step 3, element-wise product of cy and encrypted key with total sum
+        # For now, we'll just compute then encrypt
+        # TODO compute this under encrypted setting
+        cy = c[1]
+        x = round(sum([cy[i] if v > 0 else 0 for i, v in enumerate(self.scheme.newsecret)]))
+        # TODO
+        xbit = self.scheme.encrypt(toBitOrder(x)[-1])
+        """
+        prods = []
+        for i, cyi in enumerate(cy):
+            prod = []
+            for b in cyi:
+                # Mult secret key by bits
+                # If key is 1, b is kept, otherwise thrown out
+                prod.append(self.scheme.mult(self.encryptedkey[i], b))
+            prods.append(prod)
+        # Get hamming weights
+        weights = []
+        for i in range(math.log2(self.scheme.alpha)):
+            weight = self.scheme.encrypt(0)
+            for p in prods:
+                weight = self.scheme.add(weight, prod[i])
+            weights.append(weight)
+        total = self.scheme.encrypt(0)
+        for i, w in enumerate(weights):
+            new_w = self.scheme.mult(
+        """
+        # Step 4, lsb of cipher and x, xor
+        return self.scheme.add(cipher, xbit)
+
+class DGHVGate(Gate):
+    def __init__(self, scheme):
+        super().__init__()
+        self.scheme = scheme
+        self.dc = DecryptCircuit(scheme)
+    # After each run, recrypt
+    def run(self):
+        output = super().run()
+        return self.dc.run(output)
+
+
 # Circuit gates
 class ToggleSwitch(Gate):
     def __init__(self, scheme):
@@ -147,10 +200,9 @@ class ToggleSwitch(Gate):
         # ignore inputs
         return self.scheme.encrypt(self.on)
 
-class ANDGate(Gate):
+class ANDGate(DGHVGate):
     def __init__(self, scheme):
-        super().__init__()
-        self.scheme = scheme
+        super().__init__(scheme)
 
     def runImpl(self, inputs):
         # mult inputs
@@ -159,10 +211,9 @@ class ANDGate(Gate):
             val = self.scheme.mult(val, inp)
         return val
 
-class XORGate(Gate):
+class XORGate(DGHVGate):
     def __init__(self, scheme):
-        super().__init__()
-        self.scheme = scheme
+        super().__init__(scheme)
 
     def runImpl(self, inputs):
         # add inputs
@@ -171,10 +222,9 @@ class XORGate(Gate):
             val = self.scheme.add(val, inp)
         return val
 
-class ORGate(Gate):
+class ORGate(DGHVGate):
     def __init__(self, scheme):
-        super().__init__()
-        self.scheme = scheme
+        super().__init__(scheme)
         self.and1 = ANDGate(scheme)
         self.xor1 = XORGate(scheme)
         self.xor2 = XORGate(scheme)
@@ -269,6 +319,16 @@ if __name__ == "__main__":
                 assert expected == actual
 
     bootstrap = BootstrappableDGHV(4)
+    print("Testing decrypt circuit")
+    dc = DecryptCircuit(bootstrap)
+    for bit in range(0, 2):
+        expected = bit
+        cipher1 = bootstrap.encrypt(bit)
+        cipher2 = dc.run(cipher1)
+        actual = bootstrap.decrypt(cipher2)
+        print(f"{bit} -> ... -> {actual}")
+        assert expected == actual
+
     print("Testing a 1-bit adder")
     fa = FullAdder(bootstrap)
     for a in range(0, 2):
