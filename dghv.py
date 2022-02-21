@@ -2,6 +2,7 @@ import math
 import random
 from abc import ABC, abstractmethod
 from scheme import *
+from circuit import *
 from decimal import *
 import numpy as np
 
@@ -132,6 +133,110 @@ class BootstrappableDGHV(AsymmetricDGHV):
         sy = self.postProcess(newc)
         return (newc, sy)
 
+# Circuit gates
+class ToggleSwitch(Gate):
+    def __init__(self, scheme):
+        super().__init__()
+        self.scheme = scheme
+        self.on = 0
+
+    def toggle(self, val):
+        self.on = val
+
+    def runImpl(self, inputs):
+        # ignore inputs
+        return self.scheme.encrypt(self.on)
+
+class ANDGate(Gate):
+    def __init__(self, scheme):
+        super().__init__()
+        self.scheme = scheme
+
+    def runImpl(self, inputs):
+        # mult inputs
+        val = inputs[0]
+        for inp in inputs[1:]:
+            val = self.scheme.mult(val, inp)
+        return val
+
+class XORGate(Gate):
+    def __init__(self, scheme):
+        super().__init__()
+        self.scheme = scheme
+
+    def runImpl(self, inputs):
+        # add inputs
+        val = inputs[0]
+        for inp in inputs[1:]:
+            val = self.scheme.add(val, inp)
+        return val
+
+class ORGate(Gate):
+    def __init__(self, scheme):
+        super().__init__()
+        self.scheme = scheme
+        self.and1 = ANDGate(scheme)
+        self.xor1 = XORGate(scheme)
+        self.xor2 = XORGate(scheme)
+        # and1 and xor1 are inputs to xor2
+        self.xor2.addInput(self.and1)
+        self.xor2.addInput(self.xor1)
+        # xor2 will be input to this program
+        # so that calling "run" will call xor2
+        # in turn, calls and1 and xor1
+        self.inputConns.append(self.xor2)
+
+    def addInput(self, gate):
+        # Append to AND/XOR rather than gate itself
+        self.and1.addInput(gate)
+        self.xor1.addInput(gate)
+
+    def runImpl(self, inputs):
+        # inputs is result of xor2
+        # just return it
+        return inputs[0]
+
+class FullAdder():
+    def __init__(self, scheme):
+        self.scheme = scheme
+        self.toggleA = ToggleSwitch(scheme)
+        self.toggleB = ToggleSwitch(scheme)
+        self.toggleCarryIn = ToggleSwitch(scheme)
+        # Build 1 bit adder
+        xor1 = XORGate(scheme)
+        xor1.addInput(self.toggleA)
+        xor1.addInput(self.toggleB)
+
+        and1 = ANDGate(scheme)
+        and1.addInput(self.toggleA)
+        and1.addInput(self.toggleB)
+
+        xor2 = XORGate(scheme)
+        xor2.addInput(xor1)
+        xor2.addInput(self.toggleCarryIn)
+
+        self.sum = xor2
+
+        and2 = ANDGate(scheme)
+        and2.addInput(xor1)
+        and2.addInput(self.toggleCarryIn)
+
+        or1 = ORGate(scheme)
+        or1.addInput(and2)
+        or1.addInput(and1)
+
+        self.carryOut = or1
+
+    def setValues(self, a, b, carryin):
+        self.toggleA.toggle(a)
+        self.toggleB.toggle(b)
+        self.toggleCarryIn.toggle(carryin)
+
+    def run(self):
+        sumv = self.scheme.decrypt(self.sum.run())
+        carryout = self.scheme.decrypt(self.carryOut.run())
+        return (sumv, carryout)
+
 if __name__ == "__main__":
     # Some tests
     schemes = [SymmetricDGHV(4), AsymmetricDGHV(4), BootstrappableDGHV(4)]
@@ -162,4 +267,16 @@ if __name__ == "__main__":
                 actual = scheme.decrypt(encryptedActual)
                 print(f"{bit1} & {bit2} = {expected} | {actual}")
                 assert expected == actual
+
+    bootstrap = BootstrappableDGHV(4)
+    print("Testing a 1-bit adder")
+    fa = FullAdder(bootstrap)
+    for a in range(0, 2):
+        for b in range(0, 2):
+            for cin in range(0, 2):
+                sum_exp = (a ^ b) ^ cin
+                cout_exp = ((a ^ b) & cin) | (a & b)
+                fa.setValues(a, b, cin)
+                sum_act, cout_act = fa.run()
+                print(f"sum a={a} b={b} cin={cin}; EXP sum={sum_exp}, cout={cout_exp}; ACT sum={sum_act}, cout={cout_act}")
 
