@@ -2,19 +2,18 @@ from abc import ABC, abstractmethod
 
 class EncryptionScheme(ABC):
     @abstractmethod
-    def keyGen(self, lmbda):
-        # lmbda is a security parameter
+    def keyGen(self):
         pass
 
     @abstractmethod
     def encrypt(self, m):
-        # p is the key, m is a plaintext bit
+        # m is a plaintext bit
         # returns a ciphertext
         pass
 
     @abstractmethod
     def decrypt(self, c):
-        # p is the key, c is a ciphertext
+        # c is a ciphertext
         # returns a plaintext
         pass
 
@@ -37,9 +36,4 @@ class HomomorphicEncryptionScheme(EncryptionScheme):
         # returns the ciphertext c1 * c2
         pass
 
-    @abstractmethod
-    def evaluate(self, f, *cs):
-        # f is a boolean function, cs are ciphertext inputs
-        # returns the ciphertext f(c1, ..., ct)
-        pass
 
