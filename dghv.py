@@ -13,6 +13,18 @@ def toBitOrder(number, precision=None):
         fstring = "{0:0" + str(precision) + "b}"
     return [int(b) for b in fstring.format(number)]
 
+def toBitOrderFloat(number, places):
+    res = []
+    num = 1
+    for x in range(1+places):
+        if (num <= number):
+            number -= Decimal(num)
+            res.append(1)
+        else:
+            res.append(0)
+        num /= 2.0
+    return res
+
 class SymmetricDGHV(HomomorphicEncryptionScheme):
     def __init__(self, l):
         self.lmbda = l
@@ -100,7 +112,7 @@ class BootstrappableDGHV(AsymmetricDGHV):
     def postProcess(self, c):
         # Adjust ciphertext after any computation to simplify decryption
         # Element-wise product of cipher and public key set
-        return [Decimal(c) * Decimal(y) for y in self.newpublic]
+        return [(Decimal(c) * Decimal(y)) % 2 for y in self.newpublic]
 
     def encrypt(self, m):
         # Encrypt with parent
@@ -149,6 +161,8 @@ class DecryptCircuit():
         # For now, we'll just compute then encrypt
         # TODO compute this under encrypted setting
         cy = c[1]
+        cy_enc = [toBitOrderFloat(cyi, math.ceil(math.log2(self.scheme.alpha))+3) for cyi in cy]
+        cy_enc = [[self.scheme.encrypt(b) for b in cyi] for cyi in cy_enc]
         x = round(sum([cy[i] if v > 0 else 0 for i, v in enumerate(self.scheme.newsecret)]))
         # TODO
         xbit = self.scheme.encrypt(toBitOrder(x)[-1])
