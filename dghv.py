@@ -101,7 +101,7 @@ class BootstrappableDGHV(AsymmetricDGHV):
         # Compute public key and secret key as before
         super().keyGen()
         # Set appropriate decimal precision
-        getcontext().prec = self.Q
+        getcontext().prec = self.Q * 10
         # Generate subset sum that adds to 1/secretkey
         tot = (Decimal(1)/Decimal(self.secretkey))
         # Size of subset parameter
@@ -112,7 +112,7 @@ class BootstrappableDGHV(AsymmetricDGHV):
     def postProcess(self, c):
         # Adjust ciphertext after any computation to simplify decryption
         # Element-wise product of cipher and public key set
-        return [(Decimal(c) * Decimal(y)) % 2 for y in self.newpublic]
+        return [((Decimal(c)) * (Decimal(y))) % 2 for y in self.newpublic]
 
     def encrypt(self, m):
         # Encrypt with parent
@@ -152,6 +152,19 @@ class DecryptCircuit():
         # A vector of bits
         key = scheme.newsecret
         self.encryptedkey = [scheme.encrypt(v) for v in key]
+
+    def hamming_weight(self, bits):
+        P = {}
+        t = len(bits)
+        i = math.floor(math.log2(t))+1
+        for k in range(0, t+1):
+            P[(0,k)] = self.scheme.encrypt(1)
+        for j in range(1, 2**i+1):
+            P[(j,0)] = self.scheme.encrypt(0)
+        for k in range(1, t+1):
+            for j in range(2**i, 0, -1):
+                P[(j,k)] = self.scheme.add(self.scheme.mult(bits[k-1], P[(j-1,k-1)]), P[(j,k-1)])
+        return [P[(2**x,t)] for x in range(0, i+1)]
     
     def run(self, c):
         # Step 2, encrypt cipher again (bits)
@@ -161,9 +174,11 @@ class DecryptCircuit():
         # For now, we'll just compute then encrypt
         # TODO compute this under encrypted setting
         cy = c[1]
-        cy_enc = [toBitOrderFloat(cyi, math.ceil(math.log2(self.scheme.alpha))+3) for cyi in cy]
+        Theta = math.ceil(math.log2(self.scheme.alpha))+3
+        cy_enc = [toBitOrderFloat(cyi, Theta) for cyi in cy]
         cy_enc = [[self.scheme.encrypt(b) for b in cyi] for cyi in cy_enc]
         products = []
+        """
         for i, s in enumerate(self.encryptedkey):
             # Bit i goes to cy i
             # Mask each bit of each cy
@@ -171,31 +186,17 @@ class DecryptCircuit():
             for cy_bit in cy_enc[i]:
                 prod.append(self.scheme.mult(s, cy_bit))
             products.append(prod)
-        x = round(sum([cy[i] if v > 0 else 0 for i, v in enumerate(self.scheme.newsecret)]))
-        # TODO
-        xbit = self.scheme.encrypt(toBitOrder(x)[-1])
+        W = []
+        for i in range(Theta):
+            bits_i = [prod[i] for prod in products]
+            W.append(self.hamming_weight(bits_i))
         """
-        prods = []
-        for i, cyi in enumerate(cy):
-            prod = []
-            for b in cyi:
-                # Mult secret key by bits
-                # If key is 1, b is kept, otherwise thrown out
-                prod.append(self.scheme.mult(self.encryptedkey[i], b))
-            prods.append(prod)
-        # Get hamming weights
-        weights = []
-        for i in range(math.log2(self.scheme.alpha)):
-            weight = self.scheme.encrypt(0)
-            for p in prods:
-                weight = self.scheme.add(weight, prod[i])
-            weights.append(weight)
-        total = self.scheme.encrypt(0)
-        for i, w in enumerate(weights):
-            new_w = self.scheme.mult(
-        """
+        # TODO two for three trick to add hamming weights
+        x = sum([cy[i] if v > 0 else 0 for i, v in enumerate(self.scheme.newsecret)])
+        xbits = toBitOrderFloat(x % 2, Theta)
+        rounded_sum = self.scheme.add(self.scheme.encrypt(xbits[0]), self.scheme.encrypt(xbits[1]))
         # Step 4, lsb of cipher and x, xor
-        return self.scheme.add(cipher, xbit)
+        return self.scheme.add(cipher, rounded_sum)
 
 class DGHVGate(Gate):
     def __init__(self, scheme):
