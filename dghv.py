@@ -163,6 +163,14 @@ class DecryptCircuit():
         cy = c[1]
         cy_enc = [toBitOrderFloat(cyi, math.ceil(math.log2(self.scheme.alpha))+3) for cyi in cy]
         cy_enc = [[self.scheme.encrypt(b) for b in cyi] for cyi in cy_enc]
+        products = []
+        for i, s in enumerate(self.encryptedkey):
+            # Bit i goes to cy i
+            # Mask each bit of each cy
+            prod = []
+            for cy_bit in cy_enc[i]:
+                prod.append(self.scheme.mult(s, cy_bit))
+            products.append(prod)
         x = round(sum([cy[i] if v > 0 else 0 for i, v in enumerate(self.scheme.newsecret)]))
         # TODO
         xbit = self.scheme.encrypt(toBitOrder(x)[-1])
