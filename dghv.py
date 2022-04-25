@@ -32,7 +32,7 @@ class SymmetricDGHV(HomomorphicEncryptionScheme):
 
     def keyGen(self):
         self.N = self.lmbda
-        self.P = self.lmbda ** 2
+        self.P = self.lmbda ** 4 # modified
         self.Q = self.lmbda ** 5
         # Key is random P-bit odd integer
         lowbound = 2**(self.P - 2)
@@ -46,6 +46,7 @@ class SymmetricDGHV(HomomorphicEncryptionScheme):
 
     def encryptLen(self, m, bitlen):
         # N-bit integer even/odd depending on m
+        #message = m
         message = (random.randint(2**(bitlen-2), 2**(bitlen-1) - 1) << 1) + m
         # Random Q-bit noise
         q = random.randint(2**(self.Q-1), 2**self.Q) - 1
@@ -101,7 +102,7 @@ class BootstrappableDGHV(AsymmetricDGHV):
         # Compute public key and secret key as before
         super().keyGen()
         # Set appropriate decimal precision
-        getcontext().prec = self.Q * 10
+        getcontext().prec = self.Q * 20
         # Generate subset sum that adds to 1/secretkey
         tot = (Decimal(1)/Decimal(self.secretkey))
         # Size of subset parameter
@@ -168,7 +169,7 @@ class DecryptCircuit():
     
     def run(self, c):
         # Step 2, encrypt cipher again (bits)
-        cipher = self.scheme.encrypt(toBitOrder(c[0])[-1])
+        cipher_lsb = self.scheme.encrypt(toBitOrder(c[0])[-1])
         # Inputs are doubly encrypted cipher (c) and encrypted bits
         # Step 3, element-wise product of cy and encrypted key with total sum
         # For now, we'll just compute then encrypt
@@ -189,7 +190,7 @@ class DecryptCircuit():
             add = enc_cy[i]
             carry = self.scheme.encrypt(0)
             newsum = []
-            for j in range(Theta):
+            for j in range(len(add)):
                 xor1 = self.scheme.add(total[j], add[j])
                 newsum.append(self.scheme.add(xor1, carry))
                 and1 = self.scheme.mult(carry, xor1)
@@ -200,7 +201,7 @@ class DecryptCircuit():
         xbits = total[::-1]
         rounded_sum = self.scheme.add(xbits[0], xbits[1])
         # Step 4, lsb of cipher and x, xor
-        return self.scheme.add(cipher, rounded_sum)
+        return self.scheme.add(cipher_lsb, rounded_sum)
 
 class DGHVGate(Gate):
     def __init__(self, scheme):
@@ -210,8 +211,8 @@ class DGHVGate(Gate):
     # After each run, recrypt
     def run(self):
         output = super().run()
-        return output
-        #return self.dc.run(output)
+        #return output
+        return self.dc.run(output)
 
 
 # Circuit gates
