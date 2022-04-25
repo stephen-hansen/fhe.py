@@ -175,62 +175,30 @@ class DecryptCircuit():
         # TODO compute this under encrypted setting
         cy = c[1]
         Theta = math.ceil(math.log2(self.scheme.alpha))+3
-        """
-        cy_enc = [toBitOrderFloat(cyi, Theta) for cyi in cy]
-        cy_enc = [[self.scheme.encrypt(b) for b in cyi] for cyi in cy_enc]
-        products = []
-        for i, s in enumerate(self.encryptedkey):
-            # Bit i goes to cy i
-            # Mask each bit of each cy
-            prod = []
-            for cy_bit in cy_enc[i]:
-                prod.append(self.scheme.mult(s, cy_bit))
-            products.append(prod)
-        W = []
-        for i in range(Theta):
-            bits_i = [prod[i] for prod in products]
-            W.append(self.hamming_weight(bits_i))
-        # Shift weights back
-        ws = []
-        for i, weight in enumerate(W):
-            w_i = []
-            for k in range(i):
-                w_i.append(self.scheme.encrypt(0))
-            for weight_i in weight:
-                w_i.append(weight_i)
-            for k in range(len(W) - 1 - i):
-                w_i.append(self.scheme.encrypt(0))
-            ws.append(w_i)
-        # TODO two for three trick to add hamming weights
-        three_for_two_s = []
-        three_for_two_c = []
-        for i in range(len(ws[0])):
-            three_for_two_s.append(self.scheme.encrypt(0))
-            three_for_two_c.append(self.scheme.encrypt(0))
-        offset = 0
-        for w in ws:
-            # s, c extend by 1 per loop
-            next_s = [self.scheme.encrypt(0)]
-            next_c = []
-            new_w = []
-            for k in range(offset):
-                new_w.append(self.scheme.encrypt(0))
-            for w_i in w:
-                new_w.append(w_i)
-            for i, w_i in enumerate(new_w):
-                next_s.append(self.scheme.add(w_i, self.scheme.add(three_for_two_s[i], three_for_two_c[i]))) 
-                next_c.append(self.scheme.add(self.scheme.mult(w_i, three_for_two_s[i]),
-                    self.scheme.add(self.scheme.mult(three_for_two_s[i], three_for_two_c[i]),
-                        self.scheme.mult(three_for_two_c[i], w_i))))
-            next_c.append(self.scheme.encrypt(0))
-            three_for_two_s = next_s
-            three_for_two_c = next_c
-            offset+=1
-        """
-        # TODO carry propagate adder
-        x = sum([cy[i] if v > 0 else 0 for i, v in enumerate(self.scheme.newsecret)])
-        xbits = toBitOrderFloat(x % 2, Theta)
-        rounded_sum = self.scheme.add(self.scheme.encrypt(xbits[0]), self.scheme.encrypt(xbits[1]))
+        enc_cy = []
+        # First mask each cyi
+        for i, v in enumerate(self.encryptedkey):
+            cyi_bits = toBitOrderFloat(cy[i], Theta)[::-1]
+            enc_bits = []
+            for b in cyi_bits:
+                enc_bits.append(self.scheme.mult(v, self.scheme.encrypt(b)))
+            enc_cy.append(enc_bits)
+        # Ok now to do the sum
+        total = enc_cy[0]
+        for i in range(1, len(enc_cy)):
+            add = enc_cy[i]
+            carry = self.scheme.encrypt(0)
+            newsum = []
+            for j in range(Theta):
+                xor1 = self.scheme.add(total[j], add[j])
+                newsum.append(self.scheme.add(xor1, carry))
+                and1 = self.scheme.mult(carry, xor1)
+                and2 = self.scheme.mult(add[j], total[j])
+                # OR here is redundant, can just use XOR
+                carry = self.scheme.add(and1, and2)
+            total = newsum
+        xbits = total[::-1]
+        rounded_sum = self.scheme.add(xbits[0], xbits[1])
         # Step 4, lsb of cipher and x, xor
         return self.scheme.add(cipher, rounded_sum)
 
@@ -242,7 +210,8 @@ class DGHVGate(Gate):
     # After each run, recrypt
     def run(self):
         output = super().run()
-        return self.dc.run(output)
+        return output
+        #return self.dc.run(output)
 
 
 # Circuit gates
@@ -330,7 +299,7 @@ class FullAdder():
         and2.addInput(xor1)
         and2.addInput(self.toggleCarryIn)
 
-        or1 = ORGate(scheme)
+        or1 = XORGate(scheme)
         or1.addInput(and2)
         or1.addInput(and1)
 
@@ -387,7 +356,6 @@ if __name__ == "__main__":
         actual = bootstrap.decrypt(cipher2)
         print(f"{bit} -> ... -> {actual}")
         assert expected == actual
-
     print("Testing a 1-bit adder")
     fa = FullAdder(bootstrap)
     for a in range(0, 2):
