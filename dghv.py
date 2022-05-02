@@ -11,7 +11,7 @@ def toBitOrder(number, precision=None):
     fstring = "{0:b}"
     if precision is not None:
         fstring = "{0:0" + str(precision) + "b}"
-    return [int(b) for b in fstring.format(number)]
+    return [int(b) for b in fstring.format(number)][::-1]
 
 def toBitOrderFloat(number, places):
     res = []
@@ -156,7 +156,7 @@ class DecryptCircuit():
 
     def run(self, c):
         # Step 2, encrypt cipher again (bits)
-        cipher_lsb = self.scheme.encrypt(toBitOrder(c[0])[-1])
+        cipher_lsb = self.scheme.encrypt(toBitOrder(c[0])[0])
         # Inputs are doubly encrypted cipher (c) and encrypted bits
         # Step 3, element-wise product of cy and encrypted key with total sum
         cy = c[1]
@@ -196,9 +196,11 @@ class DGHVGate(Gate):
     # After each run, recrypt
     def run(self):
         output = super().run()
-        #return output
-        return self.dc.run(output)
+        return output
 
+    def recrypt(self):
+        output = super().run()
+        return self.dc.run(output)
 
 # Circuit gates
 class ToggleSwitch(Gate):
@@ -320,7 +322,7 @@ class IntegerAdder():
         # n is precision (number of bits)
         n = math.floor(max(math.log2(a), math.log2(b))) + 1
         self.numA = toBitOrder(a, n)
-        self.numB = toBitOrder(a, n)
+        self.numB = toBitOrder(b, n)
 
     def run(self):
         # output precision will be n+1
@@ -376,13 +378,17 @@ if __name__ == "__main__":
     for bit in range(0, 2):
         expected = bit
         cipher1 = bootstrap.encrypt(bit)
-        cipher2 = bootstrap.add(cipher1, bootstrap.encrypt(0))
+        cipher2 = cipher1
+        # run mult a bunch of times to generate large enough error
+        for _ in range(40):
+            cipher2 = bootstrap.mult(cipher2, bootstrap.encrypt(1))
+        assert bootstrap.decrypt(cipher2) == expected
         cipher3 = dc.run(cipher2)
         actual = bootstrap.decrypt(cipher3)
         print(f"{bit} -> ... -> {actual}")
         assert expected == actual
         assert cipher2[0] > cipher1[0]
-        #assert cipher3[0] < cipher2[0]
+        assert (cipher3[0] % bootstrap.key) <= (cipher2[0] % bootstrap.key)
     print("Testing a 1-bit adder")
     fa = FullAdder(bootstrap)
     for a in range(0, 2):
@@ -393,12 +399,26 @@ if __name__ == "__main__":
                 fa.setValues(a, b, cin)
                 sum_act, cout_act = fa.run()
                 print(f"sum a={a} b={b} cin={cin}; EXP sum={sum_exp}, cout={cout_exp}; ACT sum={sum_act}, cout={cout_act}")
-    print("Testing addition of 2 bit numbers")
+    print("Testing addition of 3 bit numbers")
     ia = IntegerAdder(bootstrap)
-    for a  in range(1, 2**2):
-        for b in range(1, 2**2):
+    for a in range(1, 2**3):
+        for b in range(1, 2**3):
             sum_exp = a + b
             ia.setValues(a, b)
             sum_act = ia.run()
-            print(f"sum a={a} b={b}; EXP sum={sum_exp}; ACT sum={sum_act}")
+            if (sum_exp != sum_act):
+                print(f"!!! sum a={a} b={b}; EXP sum={sum_exp}; ACT sum={sum_act}")
+            else:
+                print(f"sum a={a} b={b}; EXP sum={sum_exp}; ACT sum={sum_act}")
+    print("Testing addition of LARGE numbers")
+    a = 9223372036854775807
+    b = 9223372036854775807
+    ia.setValues(a,b)
+    sum_exp = a+b
+    sum_act = ia.run()
+    # This test is expected to fail
+    if (sum_exp != sum_act):
+        print(f"!!! sum a={a} b={b}; EXP sum={sum_exp}; ACT sum={sum_act}")
+    else:
+        print(f"sum a={a} b={b}; EXP sum={sum_exp}; ACT sum={sum_act}")
 
