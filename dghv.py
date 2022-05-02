@@ -23,7 +23,7 @@ def toBitOrderFloat(number, places):
         else:
             res.append(0)
         num /= 2.0
-    return res
+    return res[::-1]
 
 class SymmetricDGHV(HomomorphicEncryptionScheme):
     def __init__(self, l):
@@ -164,7 +164,7 @@ class DecryptCircuit():
         enc_cy = []
         # First mask each cyi
         for i, v in enumerate(self.encryptedkey):
-            cyi_bits = toBitOrderFloat(cy[i], Theta)[::-1]
+            cyi_bits = toBitOrderFloat(cy[i], Theta)
             enc_bits = []
             for b in cyi_bits:
                 enc_bits.append(self.scheme.mult(v, self.scheme.encrypt(b)))
