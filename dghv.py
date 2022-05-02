@@ -49,7 +49,7 @@ class SymmetricDGHV(HomomorphicEncryptionScheme):
         #message = m
         message = (random.randint(2**(bitlen-2), 2**(bitlen-1) - 1) << 1) + m
         # Random Q-bit noise
-        q = random.randint(2**(self.Q-1), 2**self.Q) - 1
+        q = random.randint(2**(self.Q-1), 2**self.Q - 1)
         return message + self.key*q
 
     def decrypt(self, c):
