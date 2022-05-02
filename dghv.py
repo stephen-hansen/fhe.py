@@ -165,9 +165,7 @@ class DecryptCircuit():
         # First mask each cyi
         for i, v in enumerate(self.encryptedkey):
             cyi_bits = toBitOrderFloat(cy[i], Theta)
-            enc_bits = []
-            for b in cyi_bits:
-                enc_bits.append(self.scheme.mult(v, self.scheme.encrypt(b)))
+            enc_bits = [self.scheme.mult(v, self.scheme.encrypt(b)) for b in cyi_bits]
             enc_cy.append(enc_bits)
         # Ok now to do the sum
         total = enc_cy[0]
