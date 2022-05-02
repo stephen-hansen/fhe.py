@@ -102,7 +102,7 @@ class BootstrappableDGHV(AsymmetricDGHV):
         # Compute public key and secret key as before
         super().keyGen()
         # Set appropriate decimal precision
-        getcontext().prec = self.Q * 20
+        getcontext().prec = self.Q * 40
         # Generate subset sum that adds to 1/secretkey
         tot = (Decimal(1)/Decimal(self.secretkey))
         # Size of subset parameter
@@ -154,26 +154,11 @@ class DecryptCircuit():
         key = scheme.newsecret
         self.encryptedkey = [scheme.encrypt(v) for v in key]
 
-    def hamming_weight(self, bits):
-        P = {}
-        t = len(bits)
-        i = math.floor(math.log2(t))+1
-        for k in range(0, t+1):
-            P[(0,k)] = self.scheme.encrypt(1)
-        for j in range(1, 2**i+1):
-            P[(j,0)] = self.scheme.encrypt(0)
-        for k in range(1, t+1):
-            for j in range(2**i, 0, -1):
-                P[(j,k)] = self.scheme.add(self.scheme.mult(bits[k-1], P[(j-1,k-1)]), P[(j,k-1)])
-        return [P[(2**x,t)] for x in range(0, i+1)]
-    
     def run(self, c):
         # Step 2, encrypt cipher again (bits)
         cipher_lsb = self.scheme.encrypt(toBitOrder(c[0])[-1])
         # Inputs are doubly encrypted cipher (c) and encrypted bits
         # Step 3, element-wise product of cy and encrypted key with total sum
-        # For now, we'll just compute then encrypt
-        # TODO compute this under encrypted setting
         cy = c[1]
         Theta = math.ceil(math.log2(self.scheme.alpha))+3
         enc_cy = []
@@ -220,14 +205,14 @@ class ToggleSwitch(Gate):
     def __init__(self, scheme):
         super().__init__()
         self.scheme = scheme
-        self.on = 0
+        self.on = self.scheme.encrypt(0)
 
     def toggle(self, val):
-        self.on = val
+        self.on = self.scheme.encrypt(val)
 
     def runImpl(self, inputs):
         # ignore inputs
-        return self.scheme.encrypt(self.on)
+        return self.on
 
 class ANDGate(DGHVGate):
     def __init__(self, scheme):
@@ -311,10 +296,48 @@ class FullAdder():
         self.toggleB.toggle(b)
         self.toggleCarryIn.toggle(carryin)
 
+    def setEncryptedValues(self, a, b, carryin):
+        self.toggleA.on = a
+        self.toggleB.on = b
+        self.toggleCarryIn.on = carryin
+
     def run(self):
         sumv = self.scheme.decrypt(self.sum.run())
         carryout = self.scheme.decrypt(self.carryOut.run())
         return (sumv, carryout)
+
+    def runEnc(self):
+        return self.sum.run(), self.carryOut.run()
+
+class IntegerAdder():
+    def __init__(self, scheme):
+        self.scheme = scheme
+        self.fullAdder = FullAdder(scheme)
+
+    def setValues(self, a, b):
+        # a, b are integers (not bit vectors)
+        # encrypted handled automatically by full adder
+        # n is precision (number of bits)
+        n = math.floor(max(math.log2(a), math.log2(b))) + 1
+        self.numA = toBitOrder(a, n)
+        self.numB = toBitOrder(a, n)
+
+    def run(self):
+        # output precision will be n+1
+        result = []
+        carry = self.scheme.encrypt(0)
+        for bitA, bitB in zip(self.numA, self.numB):
+            bitAenc = self.scheme.encrypt(bitA)
+            bitBenc = self.scheme.encrypt(bitB)
+            self.fullAdder.setEncryptedValues(bitAenc, bitBenc, carry)
+            s, carry = self.fullAdder.runEnc()
+            result.append(s)
+        result.append(carry)
+        sumv = 0
+        for bit in result[::-1]:
+            sumv *= 2
+            sumv += self.scheme.decrypt(bit)
+        return sumv
 
 if __name__ == "__main__":
     # Some tests
@@ -353,10 +376,13 @@ if __name__ == "__main__":
     for bit in range(0, 2):
         expected = bit
         cipher1 = bootstrap.encrypt(bit)
-        cipher2 = dc.run(cipher1)
-        actual = bootstrap.decrypt(cipher2)
+        cipher2 = bootstrap.add(cipher1, bootstrap.encrypt(0))
+        cipher3 = dc.run(cipher2)
+        actual = bootstrap.decrypt(cipher3)
         print(f"{bit} -> ... -> {actual}")
         assert expected == actual
+        assert cipher2[0] > cipher1[0]
+        #assert cipher3[0] < cipher2[0]
     print("Testing a 1-bit adder")
     fa = FullAdder(bootstrap)
     for a in range(0, 2):
@@ -367,4 +393,12 @@ if __name__ == "__main__":
                 fa.setValues(a, b, cin)
                 sum_act, cout_act = fa.run()
                 print(f"sum a={a} b={b} cin={cin}; EXP sum={sum_exp}, cout={cout_exp}; ACT sum={sum_act}, cout={cout_act}")
+    print("Testing addition of 2 bit numbers")
+    ia = IntegerAdder(bootstrap)
+    for a  in range(1, 2**2):
+        for b in range(1, 2**2):
+            sum_exp = a + b
+            ia.setValues(a, b)
+            sum_act = ia.run()
+            print(f"sum a={a} b={b}; EXP sum={sum_exp}; ACT sum={sum_act}")
 
