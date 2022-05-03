@@ -339,6 +339,42 @@ class IntegerAdder():
             sumv += self.scheme.decrypt(bit)
         return sumv
 
+class IntegerAdder2():
+    def __init__(self, scheme):
+        self.scheme = scheme
+        self.fullAdder = FullAdder(scheme)
+        self.decryptCircuit = DecryptCircuit(scheme)
+
+    def setValues(self, a, b):
+        # a, b are integers (not bit vectors)
+        # encrypted handled automatically by full adder
+        # n is precision (number of bits)
+        n = math.floor(max(math.log2(a), math.log2(b))) + 1
+        self.numA = toBitOrder(a, n)
+        self.numB = toBitOrder(b, n)
+
+    def run(self):
+        # output precision will be n+1
+        result = []
+        carry = self.scheme.encrypt(0)
+        for i, (bitA, bitB) in enumerate(zip(self.numA, self.numB)):
+            bitAenc = self.scheme.encrypt(bitA)
+            bitBenc = self.scheme.encrypt(bitB)
+            self.fullAdder.setEncryptedValues(bitAenc, bitBenc, carry)
+            s, carry = self.fullAdder.runEnc()
+            if (i+1) % 16 == 0:
+                # Recrypt carry on every 16th bit
+                carry = self.decryptCircuit.run(carry)
+            result.append(s)
+        result.append(carry)
+        sumv = 0
+        for bit in result[::-1]:
+            sumv *= 2
+            sumv += self.scheme.decrypt(bit)
+        return sumv
+
+
+
 if __name__ == "__main__":
     # Some tests
     schemes = [SymmetricDGHV(4), AsymmetricDGHV(4), BootstrappableDGHV(4)]
@@ -408,13 +444,25 @@ if __name__ == "__main__":
                 print(f"!!! sum a={a} b={b}; EXP sum={sum_exp}; ACT sum={sum_act}")
             else:
                 print(f"sum a={a} b={b}; EXP sum={sum_exp}; ACT sum={sum_act}")
+    # This test is expected to fail
     print("Testing addition of LARGE numbers")
     a = 9223372036854775807
     b = 9223372036854775807
     ia.setValues(a,b)
     sum_exp = a+b
     sum_act = ia.run()
-    # This test is expected to fail
+    if (sum_exp != sum_act):
+        print(f"!!! sum a={a} b={b}; EXP sum={sum_exp}; ACT sum={sum_act}")
+    else:
+        print(f"sum a={a} b={b}; EXP sum={sum_exp}; ACT sum={sum_act}")
+    # This test should pass
+    print("Testing addition of LARGE numbers WITH bootstrapping")
+    a = 9223372036854775807
+    b = 9223372036854775807
+    ia2 = IntegerAdder2(bootstrap)
+    ia2.setValues(a,b)
+    sum_exp = a+b
+    sum_act = ia2.run()
     if (sum_exp != sum_act):
         print(f"!!! sum a={a} b={b}; EXP sum={sum_exp}; ACT sum={sum_act}")
     else:
