@@ -383,10 +383,10 @@ if __name__ == "__main__":
         assert bootstrap.decrypt(cipher2) == expected
         cipher3 = dc.run(cipher2)
         actual = bootstrap.decrypt(cipher3)
-        print(f"{bit} -> ... -> {actual}")
+        print(f"{bit} recrypted maps to {actual}")
         assert expected == actual
-        assert cipher2[0] > cipher1[0]
-        assert (cipher3[0] % bootstrap.key) <= (cipher2[0] % bootstrap.key)
+        assert (cipher2[0] % bootstrap.key) > (cipher1[0] % bootstrap.key)
+        assert (cipher3[0] % bootstrap.key) < (cipher2[0] % bootstrap.key)
     print("Testing a 1-bit adder")
     fa = FullAdder(bootstrap)
     for a in range(0, 2):
