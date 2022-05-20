@@ -373,7 +373,58 @@ class IntegerAdder2():
             sumv += self.scheme.decrypt(bit)
         return sumv
 
+class IntegerMultiplier():
+    def __init__(self, scheme):
+        self.scheme = scheme
+        self.fullAdder = FullAdder(scheme)
 
+    def setValues(self, a, b):
+        # a, b are integers (not bit vectors)
+        # encrypted handled automatically by full adder
+        # n is precision (number of bits)
+        n = math.floor(max(math.log2(a), math.log2(b))) + 1
+        self.numA = toBitOrder(a, n)
+        self.numB = toBitOrder(b, n)
+
+    def run(self):
+        # output precision will be n*2
+        result = []
+        temp1 = []
+        temp2 = []
+        zero = self.scheme.encrypt(0)
+        encA = [self.scheme.encrypt(bitA) for bitA in self.numA]
+        encB = [self.scheme.encrypt(bitB) for bitB in self.numB]
+        for j, bitB in enumerate(encB):
+            for i, bitA in enumerate(encA):
+                out = self.scheme.mult(bitA, bitB)
+                if j == 0:
+                    temp1.append(out)
+                else:
+                    temp2.append(out)
+            if j > 0:
+                carry = zero
+                temp3 = []
+                for k, (x,y) in enumerate(zip(temp1,temp2)):
+                    self.fullAdder.setEncryptedValues(x, y, carry)
+                    s, carry = self.fullAdder.runEnc()
+                    if k > 0 and j+1 < len(encB):
+                        temp3.append(s)
+                    else:
+                        result.append(s)
+                if j+1 < len(encB):
+                    temp3.append(carry)
+                else:
+                    result.append(carry)
+                temp1 = temp3
+                temp2 = []
+            else:
+                result.append(temp1.pop(0))
+                temp1.append(zero)
+        sumv = 0
+        for bit in result[::-1]:
+            sumv *= 2
+            sumv += self.scheme.decrypt(bit)
+        return sumv
 
 if __name__ == "__main__":
     # Some tests
@@ -467,4 +518,16 @@ if __name__ == "__main__":
         print(f"!!! sum a={a} b={b}; EXP sum={sum_exp}; ACT sum={sum_act}")
     else:
         print(f"sum a={a} b={b}; EXP sum={sum_exp}; ACT sum={sum_act}")
+    print("Testing multiplication of 3 bit numbers")
+    im = IntegerMultiplier(bootstrap)
+    for a in range(1, 2**3):
+        for b in range(1, 2**3):
+            prod_exp = a * b
+            im.setValues(a, b)
+            prod_act = im.run()
+            if (prod_exp != prod_act):
+                print(f"!!! prod a={a} b={b}; EXP prod={prod_exp}; ACT prod={prod_act}")
+            else:
+                print(f"prod a={a} b={b}; EXP prod={prod_exp}; ACT prod={prod_act}")
+
 
